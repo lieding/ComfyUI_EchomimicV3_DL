@@ -1,0 +1,15 @@
+ffmpeg-python
+moviepy
+av
+omegaconf
+opencv-python
+tqdm
+torch
+torchvision
+torchaudio
+transformers
+diffusers
+einops
+librosa
+pyloudnorm
+numpy==2.1

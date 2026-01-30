@@ -1,0 +1,19 @@
+[project]
+name = "echomimic_dl"
+description = "you can using EchoMimic v1,v2,v3 version in comfyui,please using pip install install miss module"
+version = "3.0.0"
+license = { file = "LICENSE" }
+dependencies = ["ffmpeg-python", "moviepy", "av","omegaconf","opencv-python","tqdm","torch","torchvision","torchaudio","transformers","diffusers","einops", "librosa", "pyloudnorm", "numpy==2.1"]
+
+[project.urls]
+Repository = "https://github.com/lieding/Comfyui-echomimic.git"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "ding-lie"
+DisplayName = "ComfyUI_EchoMimic_DL"
+Icon = ""
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["echomimic_v3", "configs", "Wan2.1-Fun-V1.1-1.3B-InP"]

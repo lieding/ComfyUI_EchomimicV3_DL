@@ -1,0 +1,334 @@
+# !/usr/bin/env python
+# -*- coding: UTF-8 -*-
+import io as io_base
+import os
+import random
+import numpy as np
+import torch
+import torchaudio
+import gc
+import platform
+import subprocess
+
+import folder_paths
+
+#os.environ['DEEPFACE_HOME'] = os.path.join(folder_paths.models_dir,"echo_mimic")
+print(os.path.join(folder_paths.models_dir,"echo_mimic"))
+
+from .new_utils import find_directories,load_images,nomarl_upscale
+#from .origin_infer import Echo_v1_load_model,Echo_v2_load_model,Echo_v1_predata,Echo_v2_predata
+#from .echomimic_v3.infer import load_v3_model,infer_v3,Config,Echo_v3_predata
+from .echomimic_v3.infer_flash_pro import load_v3_flash,infer_flash,Flash_Echo_v3_predata
+
+class Config:
+    def __init__(self):
+        # General settings
+        self.ulysses_degree = 1
+        self.ring_degree = 1
+        self.fsdp_dit = False
+
+        # Pipeline parameters
+        self.num_skip_start_steps = 5
+        self.teacache_offload = False
+        self.cfg_skip_ratio = 0
+        self.enable_riflex = False
+        self.riflex_k = 6
+
+        # Paths
+        self.config_path = "config/config.yaml"
+        self.model_name = "models/Wan2.1-Fun-V1.1-1.3B-InP"
+        self.transformer_path = "models/transformer/diffusion_pytorch_model.safetensors"
+        self.vae_path = None
+
+        # Sampler and audio settings
+        self.sampler_name ="Flow_DPM++"
+        self.audio_scale = 1.0
+        self.enable_teacache = False
+        self.teacache_threshold = 0.1
+        self.shift = 5.0
+        self.use_un_ip_mask = False
+
+        # Inference parameters
+        self.negative_prompt = "Gesture is bad. Gesture is unclear. Strange and twisted hands. Bad hands. Bad fingers. Unclear and blurry hands. 手部快速摆动, 手指频繁抽搐, 夸张手势, 重复机械性动作."#Unclear gestures, broken hands, more than five fingers on one hand, extra fingers, fused fingers. "# Strange body and strange trajectory. Distortion.  "
+
+        self.partial_video_length = 113
+        self.overlap_video_length = 8
+        self.neg_scale = 1.5
+        self.neg_steps = 2
+        self.guidance_scale = 3.5 #4.0 ~ 6.0
+        self.audio_guidance_scale = 3.0 #2.0 ~ 3.0
+        self.use_dynamic_cfg = True
+        self.use_dynamic_acfg = True
+        self.seed = 43
+        self.num_inference_steps = 20
+        self.lora_weight = 1.0
+
+        # Model settings
+        self.weight_dtype = torch.bfloat16
+        self.sample_size = [768, 768]
+        self.fps = 25
+
+        # Test data paths
+        self.base_dir = "datasets/echomimicv3_demos/"
+        self.test_name_list = [
+            'guitar_woman_01','guitar_man_01',
+            'demo_cartoon_03','demo_cartoon_04',
+            '2025-07-14-1036','2025-07-14-1942',
+            '2025-07-14-2371','2025-07-14-3927',
+            '2025-07-14-4513','2025-07-14-6032',
+            '2025-07-14-7113','2025-07-14-7335',
+            ]
+
+        self.wav2vec_model_dir = "models/wav2vec2-base-960h"
+        self.save_path = "outputs"
+        self.quantize_transformer=True
+
+
+MAX_SEED = np.iinfo(np.int32).max
+device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+current_path = os.path.dirname(os.path.abspath(__file__))
+
+
+# pre dir
+weigths_current_path = os.path.join(folder_paths.models_dir, "echo_mimic")
+if not os.path.exists(weigths_current_path):
+    os.makedirs(weigths_current_path)
+
+weigths_unet_current_path = os.path.join(weigths_current_path, "unet")
+if not os.path.exists(weigths_unet_current_path):
+    os.makedirs(weigths_unet_current_path)
+
+weigths_vae_current_path = os.path.join(weigths_current_path, "vae")
+if not os.path.exists(weigths_vae_current_path):
+    os.makedirs(weigths_vae_current_path)
+
+weigths_au_current_path = os.path.join(weigths_current_path, "audio_processor")
+if not os.path.exists(weigths_au_current_path):
+    os.makedirs(weigths_au_current_path)
+
+tensorrt_lite = os.path.join(folder_paths.get_input_directory(), "tensorrt_lite")
+if not os.path.exists(tensorrt_lite):
+    os.makedirs(tensorrt_lite)
+
+weigths_trans_current_path = os.path.join(weigths_current_path, "transformer")
+if not os.path.exists(weigths_trans_current_path):
+    os.makedirs(weigths_trans_current_path)
+
+weigths_deepface_current_path = os.path.join(weigths_current_path, ".deepface/weights")
+if not os.path.exists(weigths_deepface_current_path):
+    os.makedirs(weigths_deepface_current_path)
+
+
+
+# ffmpeg
+ffmpeg_path = os.getenv('FFMPEG_PATH')
+if ffmpeg_path is None and platform.system() in ['Linux', 'Darwin']:
+    try:
+        result = subprocess.run(['which', 'ffmpeg'], capture_output=True, text=True)
+        if result.returncode == 0:
+            ffmpeg_path = result.stdout.strip()
+            print(f"FFmpeg is installed at: {ffmpeg_path}")
+        else:
+            print("FFmpeg is not installed. Please download ffmpeg-static and export to FFMPEG_PATH.")
+            print("For example: export FFMPEG_PATH=/musetalk/ffmpeg-4.4-amd64-static")
+    except Exception as e:
+        pass
+
+if ffmpeg_path is not None and ffmpeg_path not in os.getenv('PATH'):
+    print("Adding FFMPEG_PATH to PATH")
+    os.environ["PATH"] = f"{ffmpeg_path}:{os.environ['PATH']}"
+
+
+# *****************main***************
+
+class Echo_LoadModel:
+    def __init__(self):
+        pass
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "vae": (folder_paths.get_filename_list("vae"),),
+                "lora": (["None"]+folder_paths.get_filename_list("loras"),),
+                "denoising": ("BOOLEAN", {"default": True},),
+                "infer_mode": (["audio_drived", "audio_drived_acc", "pose_normal_dwpose","pose_normal_sapiens", "pose_acc"],),
+                "lowvram": ("BOOLEAN", {"default": True},),
+                "teacache_offload": ("BOOLEAN", {"default": True},),
+                "block_offload": ("BOOLEAN", {"default": True},),
+                "use_mmgp": (["None","LowRAM_LowVRAM", "VerylowRAM_LowVRAM","LowRAM_HighVRAM","HighRAM_LowVRAM","HighRAM_HighVRAM" ],), 
+                "version": (["V3_flash","V3","V2", "V1", ],), },
+        }
+    
+    RETURN_TYPES = ("MODEL_PIPE_E", "MODEL_INFO_E")
+    RETURN_NAMES = ("model", "info")
+    FUNCTION = "main_loader"
+    CATEGORY = "EchoMimic"
+    
+    def main_loader(self, vae, lora,denoising, infer_mode,  lowvram,teacache_offload,block_offload,use_mmgp, version):
+        
+        config_v3,audio_pt,face_locator_pt,pose_encoder_pt,tokenizer,temporal_compression_ratio=None,None,None,None,None,None
+        if "V1"==version :
+            pass
+        elif "V2"==version :
+            pass
+        else:#v3
+            config_v3 = Config()
+            config_v3.config_path=os.path.join(current_path, "echomimic_v3/config/config.yaml")
+            config_v3.teacache_offload=teacache_offload
+            config_v3.quantize_transformer=lowvram
+            lora_path=folder_paths.get_full_path("loras", lora) if lora!="None" else None
+            if "V3_flash"==version :
+                inp_vae="none"
+                model,temporal_compression_ratio,tokenizer= load_v3_flash("Flow_Unipc",vae,inp_vae,weigths_current_path,os.path.join(current_path, "echomimic_v3/config/config.yaml"),current_path, use_mmgp,device,block_offload)
+            else:
+                pass
+        print("##### model loaded #####")
+        info = {"lowvram": lowvram,"version":version,"tokenizer":tokenizer,"block_offload":block_offload,
+                "infer_mode":infer_mode,"audio_pt":audio_pt, "face_locator_pt":face_locator_pt,"pose_encoder_pt":pose_encoder_pt,"temporal_compression_ratio":temporal_compression_ratio}
+        info.update({"config":config_v3})
+        return (model,info)
+
+
+class Echo_Predata:
+    def __init__(self):
+        pass
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        pose_path_list = ["pose_01","pose_02","pose_03","pose_04","pose_fight","pose_good","pose_salute","pose_ultraman"] + find_directories(tensorrt_lite) if find_directories(tensorrt_lite) else ["pose_01","pose_02","pose_03","pose_04","pose_fight","pose_good","pose_salute","pose_ultraman"]
+        return {
+            "required": {
+                "info": ("MODEL_INFO_E",),
+                "image": ("IMAGE",),  # [B,H,W,C], C=3
+                "audio": ("AUDIO",),
+                "prompt": ("STRING", {"multiline": True,"default":" Gesture, Body, Face Expressions and Movements: Hands and Fingers Movements: The person's hands are not visible in the image, so there are no specific hand or finger movements to describe. Body Positions and Posture: The person is standing upright with a straight posture. Body Coverage in Frame: The person is fully visible from the waist up. Face Expressions Change: The person appears to have a neutral expression with a slight smile. Eyes Movement: The eyes are looking directly at the camera. Head Movement: The head is slightly tilted forward.  Overall Description: The character is standing in a front-facing shot, wearing a pink knitted vest over a white collared shirt and a white pleated skirt. The background appears to be a studio setting with soft lighting and some blurred elements that suggest a modern, clean environment. The person is adorned with pearl earrings, adding a touch of elegance to their appearance. The overall impression is one of a professional or casual presentation, possibly for a broadcast or a photoshoot."}),
+                "negative_prompt" :("STRING", {"multiline": True,"default":" Gesture is bad. Gesture is unclear. Strange and twisted hands. Bad hands. Bad fingers. Unclear and blurry hands. 手部快速摆动, 手指频繁抽搐, 夸张手势, 重复机械性动作." }),
+                "pose_dir": (pose_path_list,),
+                "width": ("INT", {"default": 512, "min": 128, "max": 1024, "step": 64, "display": "number"}),
+                "height": ("INT", {"default": 512, "min": 128, "max": 1024, "step": 64, "display": "number"}),   
+                "fps": ("FLOAT", {"default": 25.0, "min": 5.0, "max": 120.0}),
+                "facemask_ratio": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.1, "round": 0.01}),
+                "facecrop_ratio": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 1.0, "step": 0.1, "round": 0.01}),
+                "length": ("INT", {"default": 100, "min": 12, "max": 5000, "step": 1, "display": "number"}),
+                "partial_video_length": ([33,65,97,113,129,193],),
+                "draw_mouse": ("BOOLEAN", {"default": False},),
+                "motion_sync_": ("BOOLEAN", {"default": False},),
+                },
+            "optional": {
+                "clip": ("CLIP",),
+                "clip_vision": ("CLIP_VISION",), 
+                "video_images": ("IMAGE",),  # [B,H,W,C], C=3,B>1
+            }
+
+        }
+    
+    RETURN_TYPES = ("MODEL_EMB_E", )
+    RETURN_NAMES = ("emb",)
+    FUNCTION = "main_loader"
+    CATEGORY = "EchoMimic"
+    
+    def main_loader(self, info, image,audio,prompt,negative_prompt,pose_dir,width,height,fps,facemask_ratio,facecrop_ratio,length,partial_video_length,draw_mouse,motion_sync_,**kwargs):
+
+        version=info.get("version", "V3")
+        lowvram=info.get("lowvram", False)
+
+        text_encoder=kwargs.get("clip", None)
+        image_encoder=kwargs.get("clip_vision", None)
+        video_images = kwargs.get("video_images")
+
+
+        ip_mask_path=""
+        # pre img
+        if version=="V1" or version=="V2":       
+            pass
+        else:
+            face_img = nomarl_upscale(image, width, height)
+
+        #pre audio
+        audio_file_prefix = ''.join(random.choice("0123456789") for _ in range(6))
+        audio_file = os.path.join(folder_paths.get_input_directory(), f"audio_{audio_file_prefix}_temp.wav")
+        buff = io_base.BytesIO()
+   
+        torchaudio.save(buff, audio["waveform"].squeeze(0), audio["sample_rate"], format="FLAC")
+        with open(audio_file, 'wb') as f:
+            f.write(buff.getbuffer())
+
+        # pre data
+        if "V1"==version :
+            pass
+        elif "V2"==version :
+            pass
+        elif version=="V3_flash":
+            emb = Flash_Echo_v3_predata(image_encoder,text_encoder,info.get("tokenizer"),prompt,negative_prompt,
+                                            face_img,(768,768),audio_file,weigths_current_path,fps,length,
+                                            info.get("temporal_compression_ratio"),device,torch.bfloat16)
+        else:
+            pass
+        emb.update(info)
+        emb.update({"audio_file_prefix":audio_file_prefix,"fps":fps,"height":height,"width":width})
+
+        return (emb,)
+
+
+class Echo_Sampler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": ("MODEL_PIPE_E",),
+                "emb": ("MODEL_EMB_E",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": MAX_SEED}),
+                "cfg": ("FLOAT", {"default": 3.5, "min": 0.0, "max": 10.0, "step": 0.1, "round": 0.01}),
+                "steps": ("INT", {"default": 25, "min": 1, "max": 100}),
+                "sample_rate": ("INT", {"default": 16000, "min": 8000, "max": 48000, "step": 1000, }),
+                "context_frames": ("INT", {"default": 12, "min": 0, "max": 50}),
+                "context_overlap": ("INT", {"default": 3, "min": 0, "max": 10}),     
+                "save_video": ("BOOLEAN", {"default": False},), },    
+        }
+    
+    RETURN_TYPES = ("IMAGE",  "FLOAT")
+    RETURN_NAMES = ("image",  "frame_rate")
+    FUNCTION = "em_main"
+    CATEGORY = "EchoMimic"
+    
+    def em_main(self,model, emb, seed, cfg, steps, sample_rate,context_frames, context_overlap,save_video,):
+        
+        version= emb.get("version")
+        lowvram = emb.get("lowvram")
+
+        if version=="V1":
+            pass
+        elif version=="V2":
+            pass  
+
+        else: #v3
+            if version=="V3_flash":
+                output_video=infer_flash(model,emb.get("audio_embeds"),emb.get("prompt_embeds"),emb.get("negative_prompt_embeds"),emb.get("clip_context"),
+                                         emb.get("fps"),steps,seed,emb.get("video_length_actual"),device,emb.get("block_offload"),
+                                         emb.get("input_video"),emb.get("input_video_mask"),emb.get("sample_height"),emb.get("sample_width"),
+                                         cfg,emb.get("latent_frames"),emb.get("audio_file_prefix")
+                                         )
+                                         
+            else:
+                pass
+
+        frame_rate = float(emb.get("fps"))
+
+        gc.collect()
+        torch.cuda.empty_cache()
+        return (output_video, frame_rate)
+
+
+
+NODE_CLASS_MAPPINGS = {
+    "Echo_LoadModel": Echo_LoadModel,
+    "Echo_Predata":Echo_Predata,
+    "Echo_Sampler": Echo_Sampler,
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "Echo_LoadModel": "Echo_LoadModel",
+    "Echo_Predata": "Echo_Predata",
+    "Echo_Sampler": "Echo_Sampler",
+}
