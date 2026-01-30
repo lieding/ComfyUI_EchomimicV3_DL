@@ -320,15 +320,14 @@ class Echo_Sampler:
         return (output_video, frame_rate)
 
 
-
 NODE_CLASS_MAPPINGS = {
-    "Echo_LoadModel": Echo_LoadModel,
-    "Echo_Predata":Echo_Predata,
-    "Echo_Sampler": Echo_Sampler,
+    "ComfyUI_EchoMimic_DL_LoadModel": Echo_LoadModel,
+    "ComfyUI_EchoMimic_DL_Predata":Echo_Predata,
+    "ComfyUI_EchoMimic_DL_Sampler": Echo_Sampler,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Echo_LoadModel": "Echo_LoadModel",
-    "Echo_Predata": "Echo_Predata",
-    "Echo_Sampler": "Echo_Sampler",
+    "ComfyUI_EchoMimic_DL_LoadModel": "Echo_LoadModel",
+    "ComfyUI_EchoMimic_DL_Predata": "Echo_Predata",
+    "ComfyUI_EchoMimic_DL_Sampler": "Echo_Sampler",
 }
