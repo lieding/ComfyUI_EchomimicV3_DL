@@ -44,7 +44,6 @@ except ModuleNotFoundError:
 try:
     from sageattention import sageattn
     SAGE_ENABLED = True
-    from sageattention import sageattn
 except ModuleNotFoundError:
     SAGE_ENABLED = False
     print("sageattention not enabled")

@@ -8,18 +8,18 @@ from PIL import Image, ImageSequence, ImageOps
 #from transformers import AutoTokenizer
 #import folder_paths
 import torchvision.transforms.functional as TF
-from .echomimic_v3.src.wan_vae import AutoencoderKLWan
+from echomimic_v3.src.wan_vae import AutoencoderKLWan
 
-from .echomimic_v3.src.wan_transformer3d_audio_2512 import WanTransformerAudioMask3DModel
-from .echomimic_v3.src.pipeline_wan_fun_inpaint_audio_2512 import WanFunInpaintAudioPipeline
+from echomimic_v3.src.wan_transformer3d_audio_2512 import WanTransformerAudioMask3DModel
+from echomimic_v3.src.pipeline_wan_fun_inpaint_audio_2512 import WanFunInpaintAudioPipeline
 
-from .echomimic_v3.src.utils import (filter_kwargs, get_image_to_video_latent, get_image_to_video_latent2,
+from echomimic_v3.src.utils import (filter_kwargs, get_image_to_video_latent, get_image_to_video_latent2,
                                    save_videos_grid)
-from .echomimic_v3.src.wan_image_encoder import CLIPModel
-from .echomimic_v3.src.fm_solvers import FlowDPMSolverMultistepScheduler
-from .echomimic_v3.src.fm_solvers_unipc import FlowUniPCMultistepScheduler
-from .echomimic_v3.src.cache_utils import get_teacache_coefficients
-from  .echomimic_v3.src.wav2vec2 import Wav2Vec2Model
+from echomimic_v3.src.wan_image_encoder import CLIPModel
+from echomimic_v3.src.fm_solvers import FlowDPMSolverMultistepScheduler
+from echomimic_v3.src.fm_solvers_unipc import FlowUniPCMultistepScheduler
+from echomimic_v3.src.cache_utils import get_teacache_coefficients
+from echomimic_v3.src.wav2vec2 import Wav2Vec2Model
 import json
 import random
 import math
@@ -192,7 +192,7 @@ def load_v3_flash(
     # )
 
     # Get Clip Image Encoder
-    clip_image_encoder = CLIPModel.from_pretrained("models/clip_vision/models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth").to(weight_dtype)
+    clip_image_encoder = CLIPModel.from_pretrained("models/clip_vision/models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth").to(dtype=weight_dtype, device=device)
     clip_image_encoder = clip_image_encoder.eval()
 
     # Get Scheduler
@@ -236,7 +236,7 @@ def Flash_Echo_v3_predata(
     temporal_compression_ratio,
     fps = 25,
     video_length = 100,
-    sample_size = 16000,
+    sample_size = (768,768),
     device = 'cuda',
     weight_dtype = torch.bfloat16
 ):
@@ -410,10 +410,9 @@ def infer_flash(
         time_b = datetime.now()
         print((time_b - time_a).seconds, " seconds")
         # Save temporary video
-        tmp_video_path = f"{audio_file_prefix}_tmp.mp4"
-        pli_list=save_videos_grid(sample[:,:,:video_length_actual], tmp_video_path, fps=fps)
+        tmp_video_path = f"/workspace/output/{audio_file_prefix}_tmp.mp4"
+        save_videos_grid(sample[:,:,:video_length_actual], tmp_video_path, fps=fps)
         global compiled
         if not compiled:
             pipeline.transformer.compile()
             compiled = True
-    return pli_list
