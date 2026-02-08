@@ -172,7 +172,7 @@ class WanFunInpaintAudioPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        tokenizer,
+        #tokenizer,
         #text_encoder: WanT5EncoderModel,
         vae: AutoencoderKLWan,
         transformer,
@@ -182,7 +182,7 @@ class WanFunInpaintAudioPipeline(DiffusionPipeline):
         super().__init__()
 
         self.register_modules(
-            tokenizer=tokenizer, 
+            #tokenizer=tokenizer, 
             #text_encoder=text_encoder,
             vae=vae,
             transformer=transformer,

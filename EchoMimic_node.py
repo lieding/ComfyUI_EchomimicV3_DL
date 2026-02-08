@@ -18,7 +18,7 @@ print(os.path.join(folder_paths.models_dir,"echo_mimic"))
 from .new_utils import find_directories,load_images,nomarl_upscale
 #from .origin_infer import Echo_v1_load_model,Echo_v2_load_model,Echo_v1_predata,Echo_v2_predata
 #from .echomimic_v3.infer import load_v3_model,infer_v3,Config,Echo_v3_predata
-from .echomimic_v3.infer_flash_pro import load_v3_flash,infer_flash,Flash_Echo_v3_predata
+from .infer_flash_pro import load_v3_flash,infer_flash,Flash_Echo_v3_predata
 
 class Config:
     def __init__(self):
@@ -216,7 +216,7 @@ class Echo_Predata:
                 "motion_sync_": ("BOOLEAN", {"default": False},),
                 },
             "optional": {
-                "clip": ("CLIP",),
+                #"clip": ("CLIP",),
                 "clip_vision": ("CLIP_VISION",), 
                 "video_images": ("IMAGE",),  # [B,H,W,C], C=3,B>1
             }
